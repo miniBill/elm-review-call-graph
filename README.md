@@ -2,6 +2,8 @@
 
 Provides [`elm-review`](https://package.elm-lang.org/packages/jfmengels/elm-review/latest/) rules to draw and/or explore the call graph in an application.
 
+The call graph is a list of which functions calls which other function. It is useful to visualize the dependencies between the various parts of your codebase, at a function granularity.
+
 ## Provided rules
 
 - [`ExtractCallGraph`](https://package.elm-lang.org/packages/miniBill/elm-review-call-graph/1.0.0/ExtractCallGraph) - Extracts the call graph.
