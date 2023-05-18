@@ -15,6 +15,7 @@ import Json.Encode exposing (Value)
 import Review.ModuleNameLookupTable as ModuleNameLookupTable exposing (ModuleNameLookupTable)
 import Review.Rule as Rule exposing (Rule)
 import Set exposing (Set)
+import Unicode
 
 
 {-| Extracts the call graph for an application
@@ -171,28 +172,32 @@ visitExpression : String -> Ignored -> Node Expression -> ModuleContext -> Modul
 visitExpression namespace ignored ((Node _ expression) as expressionNode) context =
     case expression of
         FunctionOrValue moduleName name ->
-            case ModuleNameLookupTable.fullModuleNameFor context.moduleNameLookupTable expressionNode of
-                Nothing ->
-                    context
+            if Unicode.isUpper (Maybe.withDefault 'A' <| Maybe.map Tuple.first <| String.uncons name) then
+                context
 
-                Just fullModuleName ->
-                    if List.isEmpty moduleName && Set.member name ignored then
+            else
+                case ModuleNameLookupTable.fullModuleNameFor context.moduleNameLookupTable expressionNode of
+                    Nothing ->
                         context
 
-                    else
-                        let
-                            fullName : String
-                            fullName =
-                                String.join "." fullModuleName
-                                    ++ "."
-                                    ++ name
-                        in
-                        { context
-                            | callGraph =
-                                upsert namespace
-                                    fullName
-                                    context.callGraph
-                        }
+                    Just fullModuleName ->
+                        if List.isEmpty moduleName && Set.member name ignored then
+                            context
+
+                        else
+                            let
+                                fullName : String
+                                fullName =
+                                    String.join "." fullModuleName
+                                        ++ "."
+                                        ++ name
+                            in
+                            { context
+                                | callGraph =
+                                    upsert namespace
+                                        fullName
+                                        context.callGraph
+                            }
 
         IfBlock c t f ->
             visitExpressions namespace ignored [ c, t, f ] context
