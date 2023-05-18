@@ -30,4 +30,4 @@ You can try the example configuration above out by running the following command
 elm-review --template miniBill/elm-review-call-graph/example --extract --report=json | jq ".extracts.ExtractCallGraph" > call-graph.json
 ```
 
-You can then open the call graph with **TODO**
+You can then open the call graph with the viewer in the `viewer` directory.
