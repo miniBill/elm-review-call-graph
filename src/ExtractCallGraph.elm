@@ -13,6 +13,7 @@ import FastDict as Dict exposing (Dict)
 import Json.Encode exposing (Value)
 import Review.ModuleNameLookupTable as ModuleNameLookupTable exposing (ModuleNameLookupTable)
 import Review.Rule as Rule exposing (Rule)
+import Set exposing (Set)
 
 
 {-| Extracts the call graph for an application
@@ -50,13 +51,13 @@ rule =
 
 
 type alias ProjectContext =
-    Dict String (List String)
+    Dict String (Set String)
 
 
 type alias ModuleContext =
     { moduleNameLookupTable : ModuleNameLookupTable
     , moduleName : String
-    , callGraph : Dict String (List String)
+    , callGraph : Dict String (Set String)
     }
 
 
@@ -226,9 +227,9 @@ visitExpressions namespace expressions context =
     List.foldl (visitExpression namespace) context expressions
 
 
-upsert : comparable -> value -> Dict comparable (List value) -> Dict comparable (List value)
+upsert : comparable1 -> comparable2 -> Dict comparable1 (Set comparable2) -> Dict comparable1 (Set comparable2)
 upsert key value dict =
-    Dict.insert key (value :: Maybe.withDefault [] (Dict.get key dict)) dict
+    Dict.insert key (Set.insert value <| Maybe.withDefault Set.empty (Dict.get key dict)) dict
 
 
 
@@ -239,4 +240,5 @@ extractor : ProjectContext -> Value
 extractor context =
     context
         |> Dict.toCoreDict
-        |> Json.Encode.dict identity (Json.Encode.list Json.Encode.string)
+        |> Json.Encode.dict identity
+            (Set.toList >> Json.Encode.list Json.Encode.string)
