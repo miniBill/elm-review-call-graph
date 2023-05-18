@@ -246,8 +246,11 @@ visitRecordSetters namespace ignored recordSetters context =
 
 
 visitLambda : String -> Ignored -> Lambda -> ModuleContext -> ModuleContext
-visitLambda namespace ignored { expression } context =
-    visitExpression namespace ignored expression context
+visitLambda namespace ignored { args, expression } context =
+    visitExpression namespace
+        (extractNamesFromPatterns args ignored)
+        expression
+        context
 
 
 visitCaseBlock : String -> Ignored -> CaseBlock -> ModuleContext -> ModuleContext
