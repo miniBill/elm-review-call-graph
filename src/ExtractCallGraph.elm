@@ -168,6 +168,29 @@ extractNamesFromPattern (Node _ pattern) set =
             set
 
 
+coreModules : Set String
+coreModules =
+    [ "Array"
+    , "Basics"
+    , "Bitwise"
+    , "Char"
+    , "Debug"
+    , "Dict"
+    , "List"
+    , "Maybe"
+    , "Platform"
+    , "Platform.Cmd"
+    , "Platform.Sub"
+    , "Process"
+    , "Result"
+    , "Set"
+    , "String"
+    , "Task"
+    , "Tuple"
+    ]
+        |> Set.fromList
+
+
 visitExpression : String -> Ignored -> Node Expression -> ModuleContext -> ModuleContext
 visitExpression namespace ignored ((Node _ expression) as expressionNode) context =
     case expression of
@@ -181,14 +204,22 @@ visitExpression namespace ignored ((Node _ expression) as expressionNode) contex
                         context
 
                     Just fullModuleName ->
-                        if List.isEmpty moduleName && Set.member name ignored then
+                        let
+                            fullModuleNameJoined : String
+                            fullModuleNameJoined =
+                                String.join "." fullModuleName
+                        in
+                        if
+                            (List.isEmpty moduleName && Set.member name ignored)
+                                || Set.member fullModuleNameJoined coreModules
+                        then
                             context
 
                         else
                             let
                                 fullName : String
                                 fullName =
-                                    String.join "." fullModuleName
+                                    fullModuleNameJoined
                                         ++ "."
                                         ++ name
                             in
