@@ -6,7 +6,7 @@ The call graph is a list of which functions calls which other function. It is us
 
 ## Provided rules
 
-- [`ExtractCallGraph`](https://package.elm-lang.org/packages/miniBill/elm-review-call-graph/1.0.2/ExtractCallGraph/) - Extracts the call graph.
+- [`ExtractCallGraph`](https://package.elm-lang.org/packages/miniBill/elm-review-call-graph/1.0.3/ExtractCallGraph/) - Extracts the call graph.
 
 ## Configuration
 

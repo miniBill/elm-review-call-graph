@@ -3,7 +3,7 @@
     "name": "miniBill/elm-review-call-graph",
     "summary": "Extract the call graph from an application",
     "license": "BSD-3-Clause",
-    "version": "1.0.2",
+    "version": "1.0.3",
     "exposed-modules": [
         "ExtractCallGraph"
     ],
