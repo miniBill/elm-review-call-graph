@@ -3,12 +3,14 @@ module Main exposing (main)
 import Browser
 import Dagre.Attributes
 import Dict exposing (Dict)
-import Element exposing (Element, column, el, fill, padding, paddingEach, spacing, text, width, wrappedRow)
+import Element exposing (Element, alignTop, column, el, fill, padding, paddingEach, row, spacing, text, width, wrappedRow)
+import Element.Border as Border
 import Element.Input as Input
 import Graph
 import Graph.DOT
 import Html
 import Json.Decode
+import List.Extra
 import Render
 import Render.StandardDrawers
 import Render.StandardDrawers.Attributes
@@ -287,21 +289,24 @@ view model =
                     graph =
                         callGraphToGraph model cached
                 in
-                column
-                    [ spacing rythm
-                    , width fill
-                    ]
+                row [ width fill, spacing rythm ]
                     [ viewModulePicker model cached
-                    , viewViewPicker model.view
-                    , case model.view of
-                        Dot ->
-                            viewDot graph
+                    , column
+                        [ spacing rythm
+                        , width fill
+                        , alignTop
+                        ]
+                        [ viewViewPicker model.view
+                        , case model.view of
+                            Dot ->
+                                viewDot graph
 
-                        Mermaid ->
-                            viewMermaid graph
+                            Mermaid ->
+                                viewMermaid graph
 
-                        Graph ->
-                            viewGraph graph
+                            Graph ->
+                                viewGraph graph
+                        ]
                     ]
         ]
 
@@ -383,24 +388,97 @@ viewMermaid graph =
 
 viewModulePicker : Model -> Cached -> Element Msg
 viewModulePicker model cached =
+    calculateReachableNodes model { cached | selectedModules = Set.fromList cached.modules }
+        |> List.map getModule
+        |> Set.fromList
+        |> Set.toList
+        |> toTrees
+        |> List.map (viewTree cached)
+        |> column [ spacing rythm, alignTop ]
+
+
+type Tree a
+    = Node a (List (Tree a))
+
+
+toTrees : List String -> List (Tree { label : String, module_ : Maybe String })
+toTrees modules =
     let
-        reachableModules =
-            calculateReachableNodes model { cached | selectedModules = Set.fromList cached.modules }
-                |> List.map getModule
-                |> Set.fromList
-                |> Set.toList
+        toTreesHelper : List ( String, List String ) -> List (Tree { label : String, module_ : Maybe String })
+        toTreesHelper branch =
+            branch
+                |> List.Extra.gatherEqualsBy (\( _, split ) -> List.take 1 split)
+                |> List.filterMap
+                    (\( head, tail ) ->
+                        let
+                            ( emptyChildren, fullChildren ) =
+                                (head :: tail)
+                                    |> List.map (Tuple.mapSecond <| List.drop 1)
+                                    |> List.partition (Tuple.second >> List.isEmpty)
+                        in
+                        List.head (Tuple.second head)
+                            |> Maybe.map
+                                (\top ->
+                                    Node
+                                        { label = top
+                                        , module_ =
+                                            List.head emptyChildren
+                                                |> Maybe.map Tuple.first
+                                        }
+                                        (toTreesHelper fullChildren)
+                                )
+                    )
     in
-    reachableModules
-        |> List.map
+    toTreesHelper
+        (List.map
             (\module_ ->
-                Input.checkbox []
-                    { checked = Set.member module_ cached.selectedModules
-                    , label = Input.labelRight [] <| text module_
-                    , icon = Input.defaultCheckbox
-                    , onChange = SelectModule module_
-                    }
+                ( module_, String.split "." module_ )
             )
-        |> wrappedRow [ spacing rythm ]
+            modules
+        )
+
+
+topLevel : String -> String
+topLevel name =
+    name |> String.split "." |> List.head |> Maybe.withDefault ""
+
+
+viewTree :
+    Cached
+    -> Tree { label : String, module_ : Maybe String }
+    -> Element Msg
+viewTree cached (Node { label, module_ } children) =
+    let
+        labelView : Element Msg
+        labelView =
+            case module_ of
+                Just moduleName ->
+                    Input.checkbox []
+                        { checked = Set.member moduleName cached.selectedModules
+                        , label = Input.labelRight [] <| text label
+                        , icon = Input.defaultCheckbox
+                        , onChange = SelectModule moduleName
+                        }
+
+                Nothing ->
+                    text label
+    in
+    column
+        [ spacing rythm
+        , paddingEach
+            { left = rythm
+            , top = 0
+            , bottom = 0
+            , right = 0
+            }
+        , Border.widthEach
+            { left = 1
+            , top = 0
+            , bottom = 0
+            , right = 0
+            }
+        ]
+        (labelView :: List.map (viewTree cached) children)
 
 
 viewGraph : Graph -> Element Msg
