@@ -84,4 +84,24 @@ a = [ Border.width, Border.width ]
                             ]
                         }
                         """
+        , test "Should ignore local variables" <|
+            \() ->
+                """module A exposing (a)
+
+a arg =
+    let
+        b = 0
+        c x = 1
+    in arg + b + c arg
+"""
+                    |> Review.Test.run rule
+                    |> Review.Test.expectDataExtract "{}"
+        , test "Should ignore recursion" <|
+            \() ->
+                """module A exposing (a)
+
+a arg = a arg
+"""
+                    |> Review.Test.run rule
+                    |> Review.Test.expectDataExtract "{}"
         ]

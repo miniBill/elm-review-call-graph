@@ -9,6 +9,7 @@ module ExtractCallGraph exposing (rule)
 import Elm.Syntax.Declaration exposing (Declaration(..))
 import Elm.Syntax.Expression exposing (Case, CaseBlock, Expression(..), Function, FunctionImplementation, Lambda, LetBlock, LetDeclaration(..))
 import Elm.Syntax.Node as Node exposing (Node(..))
+import Elm.Syntax.Pattern exposing (Pattern(..))
 import FastDict as Dict exposing (Dict)
 import Json.Encode exposing (Value)
 import Review.ModuleNameLookupTable as ModuleNameLookupTable exposing (ModuleNameLookupTable)
@@ -61,6 +62,10 @@ type alias ModuleContext =
     }
 
 
+type alias Ignored =
+    Set String
+
+
 
 -- Project/Module Context conversion
 
@@ -96,135 +101,227 @@ declarationVisitor : Node Declaration -> ModuleContext -> ( List (Rule.Error {})
 declarationVisitor (Node _ declaration) context =
     case declaration of
         FunctionDeclaration function ->
-            ( [], visitFunction context.moduleName function context )
+            let
+                name : String
+                name =
+                    Node.value (Node.value function.declaration).name
+
+                namespace : String
+                namespace =
+                    context.moduleName ++ "." ++ name
+            in
+            ( [], visitFunction namespace Set.empty function context )
 
         _ ->
             ( [], context )
 
 
-visitFunction : String -> Function -> ModuleContext -> ModuleContext
-visitFunction namespace function context =
+visitFunction : String -> Ignored -> Function -> ModuleContext -> ModuleContext
+visitFunction namespace ignored function context =
     let
         declaration : FunctionImplementation
         declaration =
             Node.value function.declaration
 
-        newNamespace : String
-        newNamespace =
-            namespace ++ "." ++ Node.value declaration.name
+        newIgnored : Ignored
+        newIgnored =
+            extractNamesFromPatterns declaration.arguments ignored
+                |> Set.insert (Node.value declaration.name)
     in
-    visitExpression newNamespace declaration.expression context
+    visitExpression namespace newIgnored declaration.expression context
 
 
-visitExpression : String -> Node Expression -> ModuleContext -> ModuleContext
-visitExpression namespace ((Node _ expression) as expressionNode) context =
+extractNamesFromPatterns : List (Node Pattern) -> Set String -> Set String
+extractNamesFromPatterns patterns set =
+    List.foldl extractNamesFromPattern set patterns
+
+
+extractNamesFromPattern : Node Pattern -> Set String -> Set String
+extractNamesFromPattern (Node _ pattern) set =
+    case pattern of
+        VarPattern v ->
+            Set.insert v set
+
+        RecordPattern fields ->
+            List.foldl (\(Node _ field) -> Set.insert field) set fields
+
+        UnConsPattern head tail ->
+            extractNamesFromPatterns [ head, tail ] set
+
+        ListPattern children ->
+            extractNamesFromPatterns children set
+
+        TuplePattern children ->
+            extractNamesFromPatterns children set
+
+        NamedPattern _ children ->
+            extractNamesFromPatterns children set
+
+        AsPattern child (Node _ var) ->
+            extractNamesFromPattern child (Set.insert var set)
+
+        ParenthesizedPattern child ->
+            extractNamesFromPattern child set
+
+        _ ->
+            set
+
+
+visitExpression : String -> Ignored -> Node Expression -> ModuleContext -> ModuleContext
+visitExpression namespace ignored ((Node _ expression) as expressionNode) context =
     case expression of
-        FunctionOrValue _ name ->
+        FunctionOrValue moduleName name ->
             case ModuleNameLookupTable.fullModuleNameFor context.moduleNameLookupTable expressionNode of
                 Nothing ->
                     context
 
                 Just fullModuleName ->
-                    { context
-                        | callGraph =
-                            upsert namespace
-                                (String.join "." fullModuleName
+                    if List.isEmpty moduleName && Set.member name ignored then
+                        context
+
+                    else
+                        let
+                            fullName : String
+                            fullName =
+                                String.join "." fullModuleName
                                     ++ "."
                                     ++ name
-                                )
-                                context.callGraph
-                    }
+                        in
+                        { context
+                            | callGraph =
+                                upsert namespace
+                                    fullName
+                                    context.callGraph
+                        }
 
         IfBlock c t f ->
-            visitExpressions namespace [ c, t, f ] context
+            visitExpressions namespace ignored [ c, t, f ] context
 
         OperatorApplication _ _ l r ->
-            visitExpressions namespace [ l, r ] context
+            visitExpressions namespace ignored [ l, r ] context
 
         Application children ->
-            visitExpressions namespace children context
+            visitExpressions namespace ignored children context
 
         TupledExpression children ->
-            visitExpressions namespace children context
+            visitExpressions namespace ignored children context
 
         ListExpr children ->
-            visitExpressions namespace children context
+            visitExpressions namespace ignored children context
 
         Negation child ->
-            visitExpression namespace child context
+            visitExpression namespace ignored child context
 
         ParenthesizedExpression child ->
-            visitExpression namespace child context
+            visitExpression namespace ignored child context
 
         RecordAccess child _ ->
-            visitExpression namespace child context
+            visitExpression namespace ignored child context
 
         LetExpression letBlock ->
-            visitLetBlock namespace letBlock context
+            visitLetBlock namespace ignored letBlock context
 
         CaseExpression caseBlock ->
-            visitCaseBlock namespace caseBlock context
+            visitCaseBlock namespace ignored caseBlock context
 
         LambdaExpression lambda ->
-            visitLambda namespace lambda context
+            visitLambda namespace ignored lambda context
 
         RecordExpr recordSetters ->
-            visitRecordSetters namespace recordSetters context
+            visitRecordSetters namespace ignored recordSetters context
 
         RecordUpdateExpression _ recordSetters ->
-            visitRecordSetters namespace recordSetters context
+            visitRecordSetters namespace ignored recordSetters context
 
         _ ->
             context
 
 
-visitRecordSetters : String -> List (Node Elm.Syntax.Expression.RecordSetter) -> ModuleContext -> ModuleContext
-visitRecordSetters namespace recordSetters context =
+visitRecordSetters : String -> Ignored -> List (Node Elm.Syntax.Expression.RecordSetter) -> ModuleContext -> ModuleContext
+visitRecordSetters namespace ignored recordSetters context =
     List.foldl
-        (\(Node _ ( _, expression )) -> visitExpression namespace expression)
+        (\(Node _ ( _, expression )) -> visitExpression namespace ignored expression)
         context
         recordSetters
 
 
-visitLambda : String -> Lambda -> ModuleContext -> ModuleContext
-visitLambda namespace { expression } context =
-    visitExpression namespace expression context
+visitLambda : String -> Ignored -> Lambda -> ModuleContext -> ModuleContext
+visitLambda namespace ignored { expression } context =
+    visitExpression namespace ignored expression context
 
 
-visitCaseBlock : String -> CaseBlock -> ModuleContext -> ModuleContext
-visitCaseBlock namespace caseBlock context =
+visitCaseBlock : String -> Ignored -> CaseBlock -> ModuleContext -> ModuleContext
+visitCaseBlock namespace ignored caseBlock context =
     List.foldl
-        (visitCase namespace)
-        (visitExpression namespace caseBlock.expression context)
+        (visitCase namespace ignored)
+        (visitExpression namespace ignored caseBlock.expression context)
         caseBlock.cases
 
 
-visitCase : String -> Case -> ModuleContext -> ModuleContext
-visitCase namespace ( _, expression ) context =
-    visitExpression namespace expression context
+visitCase : String -> Ignored -> Case -> ModuleContext -> ModuleContext
+visitCase namespace ignored ( pattern, expression ) context =
+    visitExpression namespace
+        (extractNamesFromPattern pattern ignored)
+        expression
+        context
 
 
-visitLetBlock : String -> LetBlock -> ModuleContext -> ModuleContext
-visitLetBlock namespace { declarations, expression } context =
-    List.foldl (visitLetDeclaration namespace)
-        (visitExpression namespace expression context)
-        declarations
+visitLetBlock : String -> Ignored -> LetBlock -> ModuleContext -> ModuleContext
+visitLetBlock namespace ignored { declarations, expression } context =
+    let
+        newIgnored : Ignored
+        newIgnored =
+            List.foldl extractNamesFromLetDeclaration ignored declarations
+
+        contextAfterDeclarations : ModuleContext
+        contextAfterDeclarations =
+            List.foldl
+                (visitLetDeclaration namespace newIgnored)
+                context
+                declarations
+    in
+    visitExpression namespace newIgnored expression contextAfterDeclarations
 
 
-visitLetDeclaration : String -> Node LetDeclaration -> ModuleContext -> ModuleContext
-visitLetDeclaration namespace (Node _ letDeclaration) context =
+extractNamesFromLetDeclaration : Node LetDeclaration -> Ignored -> Ignored
+extractNamesFromLetDeclaration (Node _ letDeclaration) ignored =
     case letDeclaration of
-        LetDestructuring _ expression ->
-            visitExpression namespace expression context
+        LetDestructuring pattern _ ->
+            extractNamesFromPattern pattern ignored
 
         LetFunction function ->
-            -- TODO: use visitFunction and keep track of locally defined functions
-            visitExpression namespace (Node.value function.declaration).expression context
+            let
+                name : String
+                name =
+                    function.declaration
+                        |> Node.value
+                        |> .name
+                        |> Node.value
+            in
+            Set.insert name ignored
 
 
-visitExpressions : String -> List (Node Expression) -> ModuleContext -> ModuleContext
-visitExpressions namespace expressions context =
-    List.foldl (visitExpression namespace) context expressions
+visitLetDeclaration : String -> Ignored -> Node LetDeclaration -> ModuleContext -> ModuleContext
+visitLetDeclaration namespace ignored (Node _ letDeclaration) context =
+    case letDeclaration of
+        LetDestructuring pattern expression ->
+            let
+                newIgnored : Set String
+                newIgnored =
+                    extractNamesFromPattern pattern ignored
+            in
+            visitExpression namespace
+                newIgnored
+                expression
+                context
+
+        LetFunction function ->
+            visitFunction namespace ignored function context
+
+
+visitExpressions : String -> Ignored -> List (Node Expression) -> ModuleContext -> ModuleContext
+visitExpressions namespace ignored expressions context =
+    List.foldl (visitExpression namespace ignored) context expressions
 
 
 upsert : comparable1 -> comparable2 -> Dict comparable1 (Set comparable2) -> Dict comparable1 (Set comparable2)
