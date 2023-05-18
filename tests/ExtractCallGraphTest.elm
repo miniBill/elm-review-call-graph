@@ -67,4 +67,21 @@ a = Border.width
                             ]
                         }
                         """
+        , test "Should not report duplicates" <|
+            \() ->
+                """module A exposing (a)
+
+import Element.Border as Border
+
+a = [ Border.width, Border.width ]
+"""
+                    |> Review.Test.run rule
+                    |> Review.Test.expectDataExtract
+                        """
+                        {
+                            "A.a": [
+                                "Element.Border.width"
+                            ]
+                        }
+                        """
         ]
