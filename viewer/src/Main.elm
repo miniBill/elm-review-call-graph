@@ -438,11 +438,6 @@ toTrees modules =
         )
 
 
-topLevel : String -> String
-topLevel name =
-    name |> String.split "." |> List.head |> Maybe.withDefault ""
-
-
 viewTree :
     Cached
     -> Tree { label : String, module_ : Maybe String }
