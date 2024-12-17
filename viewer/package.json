@@ -10,5 +10,13 @@
         "elm-watch": "^2.0.0-beta.3",
         "npm-run-all": "^4.1.5"
     },
-    "license": "BSD-3-Clause"
+    "license": "BSD-3-Clause",
+    "overrides": {
+        "elm-doc-preview": ">=6.0.0",
+        "cross-spawn": ">=7.0.3"
+    },
+    "resolutions": {
+        "elm-doc-preview": ">=6.0.0",
+        "cross-spawn": ">=7.0.3"
+    }
 }
